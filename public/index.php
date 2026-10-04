@@ -37,81 +37,88 @@ $nameValue = $report['name'] ?? trim((string) ($_POST['name'] ?? ''));
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
-<div class="page">
-    <main class="stage">
-        <section class="card">
-            <header class="card-head">
+<?php if ($error !== ''): ?>
+    <div class="mask" style="display:block"></div>
+    <div class="wintips" style="display:block" role="alertdialog" aria-modal="true">
+        <div class="tipswz"><?= e($error) ?></div>
+        <div class="gbtips" id="close-dialog">确定</div>
+    </div>
+<?php endif; ?>
+<div class="body">
+    <div class="header">
+        <div style="height:28px"></div>
+    </div>
+    <div class="c-center">
+        <div style="height:35px;"></div>
+        <div class="cen-form">
+            <div class="ckhead">
                 <p><?= e($title) ?></p>
-            </header>
-            <div class="card-body">
-                <?php if ($report === null): ?>
-                    <form class="form" method="post" action="">
-                        <div class="field">
-                            <label for="ticket">准考证号：</label>
-                            <input id="ticket" name="ticket" type="text" maxlength="32" required value="<?= e($ticketValue) ?>" placeholder="请输入准考证号" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label for="name">姓名：</label>
-                            <input id="name" name="name" type="text" maxlength="30" required value="<?= e($nameValue) ?>" placeholder="请输入姓名" autocomplete="name">
-                        </div>
-                        <div class="actions">
-                            <button class="submit" type="submit">查询</button>
-                        </div>
-                    </form>
-                <?php else: ?>
-                    <div class="summary">
-                        <div>准考证号：<b><?= e($report['ticket_no']) ?></b></div>
-                        <div>姓名：<b><?= e($report['name']) ?></b></div>
-                        <div>总分：<b><?= e(format_score((float) $report['total'])) ?></b></div>
-                        <div>总分排名：<b>第 <?= (int) $report['total_rank'] ?> 名 / 共 <?= (int) $report['total_count'] ?> 人</b></div>
-                    </div>
-                    <div class="table-wrap">
-                        <table class="scores">
-                            <thead>
-                            <tr>
-                                <th>科目</th>
-                                <th>分数</th>
-                                <th>科目排名</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            <?php foreach ($report['subjects'] as $subject): ?>
-                                <tr>
-                                    <td><?= e($subject['subject']) ?></td>
-                                    <td><?= e(format_score((float) $subject['score'])) ?></td>
-                                    <td>第 <?= (int) $subject['rank'] ?> 名 / 共 <?= (int) $subject['count'] ?> 人</td>
-                                </tr>
-                            <?php endforeach; ?>
-                            <tr class="total">
-                                <td>总分</td>
-                                <td><?= e(format_score((float) $report['total'])) ?></td>
-                                <td>第 <?= (int) $report['total_rank'] ?> 名 / 共 <?= (int) $report['total_count'] ?> 人</td>
-                            </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="again">
-                        <a href="./">返回查询</a>
-                    </div>
-                <?php endif; ?>
             </div>
-            <footer class="card-foot">分数相同则并列，下一名次按人数顺延。总分按已录入科目合计，排名只在当前成绩库内计算。</footer>
-        </section>
-    </main>
-    <footer class="footbar">
-        <p>独立成绩查询。请使用准考证号和姓名查询本人成绩。</p>
-    </footer>
+            <?php if ($report === null): ?>
+                <form class="form" method="post" action="">
+                    <div class="ckbd">
+                        <div class="ckleft">准考证号：</div>
+                        <div class="ckright"><input id="ticket" name="ticket" class="cipnut" type="text" maxlength="32" required value="<?= e($ticketValue) ?>" placeholder="请输入准考证号" autocomplete="off"></div>
+                    </div>
+                    <div class="ckbd">
+                        <div class="ckleft">姓名：</div>
+                        <div class="ckright"><input id="name" name="name" class="cipnut" type="text" maxlength="30" required value="<?= e($nameValue) ?>" placeholder="请输入姓名" autocomplete="name"></div>
+                    </div>
+                    <div class="ckbd mt40">
+                        <input class="inquire" type="submit" value="查询">
+                    </div>
+                </form>
+            <?php else: ?>
+                <div class="searesult">
+                    <div class="ksxin clear">
+                        <div>准考证号：<span><?= e($report['ticket_no']) ?></span></div>
+                        <div>姓名：<span class="kname"><?= e($report['name']) ?></span></div>
+                        <div>总分：<span><?= e(format_score((float) $report['total'])) ?></span></div>
+                        <div class="k3ksh">总分排名：<span>第 <?= (int) $report['total_rank'] ?> 名 / 共 <?= (int) $report['total_count'] ?> 人</span></div>
+                    </div>
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>科目</th>
+                            <th>分数</th>
+                            <th>科目排名</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($report['subjects'] as $subject): ?>
+                            <tr>
+                                <td><?= e($subject['subject']) ?></td>
+                                <td><?= e(format_score((float) $subject['score'])) ?></td>
+                                <td>第 <?= (int) $subject['rank'] ?> 名 / 共 <?= (int) $subject['count'] ?> 人</td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <tr>
+                            <td>总分</td>
+                            <td><?= e(format_score((float) $report['total'])) ?></td>
+                            <td>第 <?= (int) $report['total_rank'] ?> 名 / 共 <?= (int) $report['total_count'] ?> 人</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                    <div class="cxnr show clear">
+                        <a class="agcx" href="./">返回查询</a>
+                    </div>
+                </div>
+            <?php endif; ?>
+            <div class="ckfoot">分数相同则并列，下一名次按人数顺延。总分按已录入科目合计，排名只在当前成绩库内计算。</div>
+        </div>
+        <div style="height:50px;"></div>
+    </div>
+    <div class="footer_bottom">
+        <div class="footer_bottom_box">
+            <span>独立成绩查询。请使用准考证号和姓名查询本人成绩。</span>
+        </div>
+    </div>
 </div>
 <?php if ($error !== ''): ?>
-    <div class="mask"></div>
-    <div class="dialog" role="alertdialog" aria-modal="true">
-        <p><?= e($error) ?></p>
-        <button type="button" id="close-dialog">确定</button>
-    </div>
     <script>
         document.getElementById('close-dialog').addEventListener('click', function () {
             document.querySelector('.mask').remove();
-            document.querySelector('.dialog').remove();
+            document.querySelector('.wintips').remove();
         });
     </script>
 <?php endif; ?>
