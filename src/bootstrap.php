@@ -289,9 +289,10 @@ function captcha_code(): string
 function refresh_captcha(): void
 {
     start_app_session();
+    $alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
     $code = '';
-    for ($i = 0; $i < 6; $i++) {
-        $code .= (string) random_int(0, 9);
+    for ($i = 0; $i < 5; $i++) {
+        $code .= $alphabet[random_int(0, strlen($alphabet) - 1)];
     }
     $_SESSION['captcha_code'] = $code;
     $_SESSION['captcha_created_at'] = time();
@@ -305,7 +306,7 @@ function captcha_ok(string $answer): bool
     $valid = $known !== ''
         && $createdAt > 0
         && (time() - $createdAt) <= 300
-        && hash_equals($known, trim($answer));
+        && hash_equals($known, strtoupper(trim($answer)));
     refresh_captcha();
     return $valid;
 }

@@ -7,52 +7,70 @@ require_once __DIR__ . '/../src/bootstrap.php';
 refresh_captcha();
 $code = captcha_code();
 
-header('Content-Type: image/svg+xml; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
 
-$segments = [
-    '0' => ['a', 'b', 'c', 'd', 'e', 'f'],
-    '1' => ['b', 'c'],
-    '2' => ['a', 'b', 'g', 'e', 'd'],
-    '3' => ['a', 'b', 'g', 'c', 'd'],
-    '4' => ['f', 'g', 'b', 'c'],
-    '5' => ['a', 'f', 'g', 'c', 'd'],
-    '6' => ['a', 'f', 'g', 'e', 'c', 'd'],
-    '7' => ['a', 'b', 'c'],
-    '8' => ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
-    '9' => ['a', 'b', 'c', 'd', 'f', 'g'],
-];
-$shapes = [
-    'a' => 'M3 2 L15 2 L17 4 L15 6 L3 6 L1 4 Z',
-    'b' => 'M16 5 L18 7 L18 17 L16 19 L14 17 L14 7 Z',
-    'c' => 'M16 21 L18 23 L18 33 L16 35 L14 33 L14 23 Z',
-    'd' => 'M3 34 L15 34 L17 36 L15 38 L3 38 L1 36 Z',
-    'e' => 'M2 21 L4 23 L4 33 L2 35 L0 33 L0 23 Z',
-    'f' => 'M2 5 L4 7 L4 17 L2 19 L0 17 L0 7 Z',
-    'g' => 'M3 18 L15 18 L17 20 L15 22 L3 22 L1 20 Z',
-];
+if (!extension_loaded('gd') || !function_exists('imagettftext')) {
+    http_response_code(503);
+    header('Content-Type: text/plain; charset=utf-8');
+    exit('图形验证码需要启用 PHP GD 和 FreeType 扩展');
+}
 
-$digits = '';
-foreach (str_split($code) as $index => $digit) {
-    $x = 10 + ($index * 22);
-    $rotate = random_int(-9, 9);
-    $y = random_int(-1, 1);
-    $paths = '';
-    foreach ($segments[$digit] as $segment) {
-        $paths .= '<path d="' . $shapes[$segment] . '"/>';
+$fontCandidates = array_filter([
+    getenv('CAPTCHA_FONT') ?: null,
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    '/usr/share/fonts/truetype/croscore/Arimo-Bold.ttf',
+]);
+$font = null;
+foreach ($fontCandidates as $candidate) {
+    if (is_readable($candidate)) {
+        $font = $candidate;
+        break;
     }
-    $digits .= '<g transform="translate(' . $x . ' ' . $y . ') rotate(' . $rotate . ' 9 20)">' . $paths . '</g>';
+}
+if ($font === null) {
+    http_response_code(503);
+    header('Content-Type: text/plain; charset=utf-8');
+    exit('未找到验证码字体；请设置 CAPTCHA_FONT');
 }
 
-$noise = '';
-for ($i = 0; $i < 8; $i++) {
-    $noise .= '<path d="M' . random_int(0, 140) . ' ' . random_int(2, 38)
-        . ' L' . random_int(0, 140) . ' ' . random_int(2, 38)
-        . '" stroke="#b8d6f0" stroke-width="1"/>';
+$width = 170;
+$height = 48;
+$image = imagecreatetruecolor($width, $height);
+imagealphablending($image, true);
+$background = imagecolorallocate($image, random_int(242, 250), random_int(246, 253), 255);
+imagefilledrectangle($image, 0, 0, $width, $height, $background);
+
+// Discuz-style interference: first draw low-contrast curves/lines behind variable glyphs.
+for ($i = 0; $i < 10; $i++) {
+    $noise = imagecolorallocatealpha($image, random_int(120, 190), random_int(160, 215), 235, random_int(55, 95));
+    imagesetthickness($image, random_int(1, 2));
+    imagearc(
+        $image,
+        random_int(-20, $width + 20),
+        random_int(-10, $height + 10),
+        random_int(35, 130),
+        random_int(20, 90),
+        random_int(0, 180),
+        random_int(180, 360),
+        $noise
+    );
 }
 
-echo '<svg xmlns="http://www.w3.org/2000/svg" width="145" height="40" viewBox="0 0 145 40">'
-    . '<rect width="145" height="40" rx="3" fill="#eef7ff"/>'
-    . '<g fill="#1879D2">' . $digits . '</g>'
-    . $noise
-    . '</svg>';
+foreach (str_split($code) as $index => $character) {
+    $color = imagecolorallocate($image, random_int(20, 85), random_int(70, 135), random_int(145, 210));
+    $size = random_int(20, 26);
+    $angle = random_int(-28, 28);
+    $x = 9 + ($index * 31) + random_int(-2, 2);
+    $y = random_int(31, 39);
+    imagettftext($image, $size, $angle, $x, $y, $color, $font, $character);
+}
+
+for ($i = 0; $i < 190; $i++) {
+    $dot = imagecolorallocatealpha($image, random_int(75, 175), random_int(105, 195), random_int(165, 235), random_int(35, 95));
+    imagefilledellipse($image, random_int(0, $width), random_int(0, $height), random_int(1, 2), random_int(1, 2), $dot);
+}
+
+header('Content-Type: image/png');
+imagepng($image);
+imagedestroy($image);

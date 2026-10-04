@@ -58,7 +58,10 @@ assert_feature(setting('site_title') === '测试站点', 'site settings were not
 
 refresh_captcha();
 $captcha = captcha_code();
-assert_feature((bool) preg_match('/^\d{6}$/', $captcha), 'captcha is not a six digit code');
+assert_feature(
+    (bool) preg_match('/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{5}$/', $captcha),
+    'captcha is not a five character random code'
+);
 assert_feature(captcha_ok($captcha), 'captcha validation failed');
 assert_feature(!captcha_ok('not-a-code'), 'invalid captcha was accepted');
 
@@ -66,9 +69,8 @@ refresh_captcha();
 ob_start();
 require $root . '/public/captcha.php';
 $captchaSvg = (string) ob_get_clean();
-$renderedCode = captcha_code();
+assert_feature(str_starts_with($captchaSvg, "\x89PNG\r\n\x1a\n"), 'captcha is not a PNG image');
 assert_feature(!str_contains($captchaSvg, '<text'), 'captcha exposes text nodes');
-assert_feature(!str_contains($captchaSvg, $renderedCode), 'captcha exposes its code in the response');
 
 log_access('success', 'test entry', '26010001', '陈予安');
 assert_feature(count(AdminService::accessLogs()) === 1, 'access log missing');

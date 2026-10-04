@@ -106,7 +106,7 @@ $nameValue = $report['name'] ?? trim((string) ($_POST['name'] ?? ''));
                     <div class="ckbd">
                         <div class="ckleft">验证码：</div>
                         <div class="ckright">
-                            <input id="captcha" name="captcha" class="code" type="text" maxlength="6" pattern="[0-9]{6}" required placeholder="请输入图形验证码" inputmode="numeric" autocomplete="off">
+                            <input id="captcha" name="captcha" class="code" type="text" maxlength="5" pattern="[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{5}" required placeholder="请输入图形验证码" autocomplete="off" style="text-transform:uppercase">
                             <img class="img-verifycode" id="captcha-image" src="captcha.php" alt="点击刷新验证码" title="点击刷新验证码">
                         </div>
                     </div>
