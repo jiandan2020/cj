@@ -12,13 +12,19 @@ $queryFields = Scoreboard::queryFields(true);
 $siteTitle = setting('site_title', '成绩查询');
 $siteFooter = setting('site_footer', '独立成绩查询。请使用准考证号和姓名查询本人成绩。');
 $queryHint = setting('query_hint', '分数相同则并列，下一名次按人数顺延。总分按已录入科目合计，排名只在当前成绩库内计算。');
+$captchaLength = captcha_length();
+$captchaWidth = captcha_image_width();
+$captchaInputWidth = max(80, 305 - $captchaWidth);
+$captchaPattern = setting('captcha_charset', 'alnum') === 'digits'
+    ? '[23456789]{' . $captchaLength . '}'
+    : '[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{' . $captchaLength . '}';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ticket = trim((string) ($_POST['ticket'] ?? ''));
     $name = trim((string) ($_POST['name'] ?? ''));
     $customValues = is_array($_POST['field'] ?? null) ? $_POST['field'] : [];
     try {
-        if (!rate_limit_allows('public_query', 15, 600)) {
+        if (!rate_limit_allows('public_query', max(1, min(100, (int) setting('public_query_limit', '15'))), 600)) {
             $error = '请求过于频繁，请 10 分钟后再试';
             log_access('rate_limited', $error, $ticket, $name);
             throw new InvalidArgumentException($error);
@@ -106,8 +112,8 @@ $nameValue = $report['name'] ?? trim((string) ($_POST['name'] ?? ''));
                     <div class="ckbd">
                         <div class="ckleft">验证码：</div>
                         <div class="ckright">
-                            <input id="captcha" name="captcha" class="code" type="text" maxlength="6" pattern="[0-9]{6}" required placeholder="请输入图形验证码" inputmode="numeric" autocomplete="off">
-                            <img class="img-verifycode" id="captcha-image" src="captcha.php" alt="点击刷新验证码" title="点击刷新验证码">
+                            <input id="captcha" name="captcha" class="code" type="text" maxlength="<?= $captchaLength ?>" pattern="<?= e($captchaPattern) ?>" required placeholder="请输入图形验证码" autocomplete="off" style="width:<?= $captchaInputWidth ?>px;text-transform:uppercase">
+                            <img class="img-verifycode" id="captcha-image" src="captcha.php" alt="点击刷新验证码" title="点击刷新验证码" style="width:<?= $captchaWidth ?>px">
                         </div>
                     </div>
                     <div class="ckbd mt40">

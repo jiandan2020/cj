@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'login') {
         $username = trim((string) ($_POST['username'] ?? ''));
         $password = (string) ($_POST['password'] ?? '');
-        if (!rate_limit_allows('admin_login', 5, 600)) {
+        if (!rate_limit_allows('admin_login', max(1, min(20, (int) setting('admin_login_limit', '5'))), 600)) {
             $error = '登录尝试过于频繁，请 10 分钟后再试';
             log_access('admin_rate_limited', $error);
         } elseif (!captcha_ok((string) ($_POST['captcha'] ?? ''))) {
@@ -89,15 +89,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $siteTitle = trim((string) ($_POST['site_title'] ?? ''));
                 $siteFooter = trim((string) ($_POST['site_footer'] ?? ''));
                 $queryHint = trim((string) ($_POST['query_hint'] ?? ''));
+                $captchaLength = (int) ($_POST['captcha_length'] ?? 5);
+                $captchaCharset = (string) ($_POST['captcha_charset'] ?? 'alnum');
+                $captchaExpiry = (int) ($_POST['captcha_expiry_seconds'] ?? 300);
+                $captchaNoise = (int) ($_POST['captcha_noise_level'] ?? 2);
+                $publicLimit = (int) ($_POST['public_query_limit'] ?? 15);
+                $loginLimit = (int) ($_POST['admin_login_limit'] ?? 5);
                 if ($siteTitle === '' || mb_strlen($siteTitle) > 40
                     || $siteFooter === '' || mb_strlen($siteFooter) > 150
-                    || $queryHint === '' || mb_strlen($queryHint) > 200) {
+                    || $queryHint === '' || mb_strlen($queryHint) > 200
+                    || $captchaLength < 4 || $captchaLength > 6
+                    || !in_array($captchaCharset, ['alnum', 'digits'], true)
+                    || $captchaExpiry < 60 || $captchaExpiry > 900
+                    || $captchaNoise < 1 || $captchaNoise > 4
+                    || $publicLimit < 1 || $publicLimit > 100
+                    || $loginLimit < 1 || $loginLimit > 20) {
                     throw new InvalidArgumentException('请填写站点信息，并确保长度在允许范围内');
                 }
                 save_settings([
                     'site_title' => $siteTitle,
                     'site_footer' => $siteFooter,
                     'query_hint' => $queryHint,
+                    'captcha_length' => (string) $captchaLength,
+                    'captcha_charset' => $captchaCharset,
+                    'captcha_expiry_seconds' => (string) $captchaExpiry,
+                    'captcha_noise_level' => (string) $captchaNoise,
+                    'public_query_limit' => (string) $publicLimit,
+                    'admin_login_limit' => (string) $loginLimit,
                 ]);
                 $notice = '站点信息已保存';
                 log_access('settings_saved', $notice);
@@ -172,6 +190,12 @@ if ($loggedIn && $section === 'scores' && isset($_GET['edit'])) {
 $creating = $loggedIn && isset($_GET['new']);
 $token = csrf_token();
 $customFields = Scoreboard::queryFields(false);
+$captchaLength = captcha_length();
+$captchaWidth = captcha_image_width();
+$captchaInputWidth = max(80, 305 - $captchaWidth);
+$captchaPattern = setting('captcha_charset', 'alnum') === 'digits'
+    ? '[23456789]{' . $captchaLength . '}'
+    : '[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{' . $captchaLength . '}';
 
 $formId = $editing['id'] ?? 0;
 $formTicket = $editing['ticket_no'] ?? '';
@@ -234,8 +258,8 @@ if (($creating || $editing) && $error !== '' && $_SERVER['REQUEST_METHOD'] === '
                     <div class="ckbd">
                         <div class="ckleft">验证码：</div>
                         <div class="ckright">
-                            <input id="captcha" name="captcha" class="code" type="text" maxlength="6" pattern="[0-9]{6}" required placeholder="请输入图形验证码" inputmode="numeric" autocomplete="off">
-                            <img class="img-verifycode" id="captcha-image" src="captcha.php" alt="点击刷新验证码" title="点击刷新验证码">
+                            <input id="captcha" name="captcha" class="code" type="text" maxlength="<?= $captchaLength ?>" pattern="<?= e($captchaPattern) ?>" required placeholder="请输入图形验证码" autocomplete="off" style="width:<?= $captchaInputWidth ?>px;text-transform:uppercase">
+                            <img class="img-verifycode" id="captcha-image" src="captcha.php" alt="点击刷新验证码" title="点击刷新验证码" style="width:<?= $captchaWidth ?>px">
                         </div>
                     </div>
                     <div class="ckbd mt40">
@@ -360,6 +384,35 @@ if (($creating || $editing) && $error !== '' && $_SERVER['REQUEST_METHOD'] === '
                         <div class="ckbd tall">
                             <div class="ckleft">查询提示：</div>
                             <div class="ckright"><textarea class="cipnut" name="query_hint" maxlength="200" required><?= e(setting('query_hint')) ?></textarea></div>
+                        </div>
+                        <div class="ckbd">
+                            <div class="ckleft">验证码字符数：</div>
+                            <div class="ckright"><input class="cipnut" name="captcha_length" type="number" min="4" max="6" required value="<?= e(setting('captcha_length', '5')) ?>"></div>
+                        </div>
+                        <div class="ckbd">
+                            <div class="ckleft">验证码字符集：</div>
+                            <div class="ckright">
+                                <select class="cselect" name="captcha_charset">
+                                    <option value="alnum"<?= setting('captcha_charset', 'alnum') === 'alnum' ? ' selected' : '' ?>>字母与数字</option>
+                                    <option value="digits"<?= setting('captcha_charset') === 'digits' ? ' selected' : '' ?>>数字</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="ckbd">
+                            <div class="ckleft">验证码有效期：</div>
+                            <div class="ckright"><input class="cipnut" name="captcha_expiry_seconds" type="number" min="60" max="900" required value="<?= e(setting('captcha_expiry_seconds', '300')) ?>" placeholder="60 到 900 秒"></div>
+                        </div>
+                        <div class="ckbd">
+                            <div class="ckleft">图形干扰强度：</div>
+                            <div class="ckright"><input class="cipnut" name="captcha_noise_level" type="number" min="1" max="4" required value="<?= e(setting('captcha_noise_level', '2')) ?>" placeholder="1 到 4"></div>
+                        </div>
+                        <div class="ckbd">
+                            <div class="ckleft">查询限流：</div>
+                            <div class="ckright"><input class="cipnut" name="public_query_limit" type="number" min="1" max="100" required value="<?= e(setting('public_query_limit', '15')) ?>" placeholder="每 10 分钟 / IP"></div>
+                        </div>
+                        <div class="ckbd">
+                            <div class="ckleft">登录限流：</div>
+                            <div class="ckright"><input class="cipnut" name="admin_login_limit" type="number" min="1" max="20" required value="<?= e(setting('admin_login_limit', '5')) ?>" placeholder="每 10 分钟 / IP"></div>
                         </div>
                         <div class="ckbd mt40"><input class="inquire" type="submit" value="保存站点信息"></div>
                     </form>
