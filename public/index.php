@@ -18,6 +18,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim((string) ($_POST['name'] ?? ''));
     $customValues = is_array($_POST['field'] ?? null) ? $_POST['field'] : [];
     try {
+        if (!rate_limit_allows('public_query', 15, 600)) {
+            $error = '请求过于频繁，请 10 分钟后再试';
+            log_access('rate_limited', $error, $ticket, $name);
+            throw new InvalidArgumentException($error);
+        }
         Scoreboard::assertTicket($ticket);
         Scoreboard::assertName($name);
         foreach ($queryFields as $field) {
@@ -44,8 +49,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             log_access('success', '成绩查询成功', $ticket, $name);
         }
     } catch (InvalidArgumentException $exception) {
-        $error = $exception->getMessage();
-        log_access('invalid_request', $error, $ticket, $name);
+        if ($error === '') {
+            $error = $exception->getMessage();
+            log_access('invalid_request', $error, $ticket, $name);
+        }
     }
 }
 
@@ -99,7 +106,7 @@ $nameValue = $report['name'] ?? trim((string) ($_POST['name'] ?? ''));
                     <div class="ckbd">
                         <div class="ckleft">验证码：</div>
                         <div class="ckright">
-                            <input id="captcha" name="captcha" class="code" type="text" maxlength="3" required placeholder="请输入结果" inputmode="numeric" autocomplete="off">
+                            <input id="captcha" name="captcha" class="code" type="text" maxlength="6" pattern="[0-9]{6}" required placeholder="请输入图形验证码" inputmode="numeric" autocomplete="off">
                             <img class="img-verifycode" id="captcha-image" src="captcha.php" alt="点击刷新验证码" title="点击刷新验证码">
                         </div>
                     </div>

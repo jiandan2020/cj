@@ -122,6 +122,15 @@ function migrate(PDO $pdo): void
             detail TEXT
         )'
     );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS rate_limits (
+            scope TEXT NOT NULL,
+            ip_address TEXT NOT NULL,
+            window_started INTEGER NOT NULL,
+            hits INTEGER NOT NULL,
+            PRIMARY KEY(scope, ip_address)
+        )'
+    );
     seed_application_data($pdo);
 }
 
@@ -280,25 +289,48 @@ function captcha_code(): string
 function refresh_captcha(): void
 {
     start_app_session();
-    $left = random_int(2, 9);
-    $right = random_int(1, 9);
-    $_SESSION['captcha_code'] = (string) ($left + $right);
-    $_SESSION['captcha_label'] = $left . ' + ' . $right . ' = ?';
-}
-
-function captcha_label(): string
-{
-    captcha_code();
-    return (string) $_SESSION['captcha_label'];
+    $code = '';
+    for ($i = 0; $i < 6; $i++) {
+        $code .= (string) random_int(0, 9);
+    }
+    $_SESSION['captcha_code'] = $code;
+    $_SESSION['captcha_created_at'] = time();
 }
 
 function captcha_ok(string $answer): bool
 {
     start_app_session();
     $known = (string) ($_SESSION['captcha_code'] ?? '');
-    $valid = $known !== '' && hash_equals($known, trim($answer));
+    $createdAt = (int) ($_SESSION['captcha_created_at'] ?? 0);
+    $valid = $known !== ''
+        && $createdAt > 0
+        && (time() - $createdAt) <= 300
+        && hash_equals($known, trim($answer));
     refresh_captcha();
     return $valid;
+}
+
+function rate_limit_allows(string $scope, int $maximumHits, int $windowSeconds): bool
+{
+    $pdo = app_pdo();
+    $ip = client_ip();
+    $now = time();
+    $stmt = $pdo->prepare('SELECT window_started, hits FROM rate_limits WHERE scope = ? AND ip_address = ?');
+    $stmt->execute([$scope, $ip]);
+    $row = $stmt->fetch();
+    if (!$row || $now - (int) $row['window_started'] >= $windowSeconds) {
+        $pdo->prepare(
+            'INSERT INTO rate_limits (scope, ip_address, window_started, hits) VALUES (?, ?, ?, 1)
+             ON CONFLICT(scope, ip_address) DO UPDATE SET window_started = excluded.window_started, hits = 1'
+        )->execute([$scope, $ip, $now]);
+        return true;
+    }
+    if ((int) $row['hits'] >= $maximumHits) {
+        return false;
+    }
+    $pdo->prepare('UPDATE rate_limits SET hits = hits + 1 WHERE scope = ? AND ip_address = ?')
+        ->execute([$scope, $ip]);
+    return true;
 }
 
 function current_admin(): ?array

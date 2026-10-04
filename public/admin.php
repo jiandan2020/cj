@@ -22,7 +22,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'login') {
         $username = trim((string) ($_POST['username'] ?? ''));
         $password = (string) ($_POST['password'] ?? '');
-        if (!captcha_ok((string) ($_POST['captcha'] ?? ''))) {
+        if (!rate_limit_allows('admin_login', 5, 600)) {
+            $error = '登录尝试过于频繁，请 10 分钟后再试';
+            log_access('admin_rate_limited', $error);
+        } elseif (!captcha_ok((string) ($_POST['captcha'] ?? ''))) {
             $error = '验证码不正确，请重新输入';
             log_access('admin_captcha_failed', $error);
         } elseif ($admin = AdminService::authenticate($username, $password)) {
@@ -231,7 +234,7 @@ if (($creating || $editing) && $error !== '' && $_SERVER['REQUEST_METHOD'] === '
                     <div class="ckbd">
                         <div class="ckleft">验证码：</div>
                         <div class="ckright">
-                            <input id="captcha" name="captcha" class="code" type="text" maxlength="3" required placeholder="请输入结果" inputmode="numeric" autocomplete="off">
+                            <input id="captcha" name="captcha" class="code" type="text" maxlength="6" pattern="[0-9]{6}" required placeholder="请输入图形验证码" inputmode="numeric" autocomplete="off">
                             <img class="img-verifycode" id="captcha-image" src="captcha.php" alt="点击刷新验证码" title="点击刷新验证码">
                         </div>
                     </div>

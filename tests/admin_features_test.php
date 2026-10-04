@@ -57,11 +57,25 @@ save_settings(['site_title' => '测试站点']);
 assert_feature(setting('site_title') === '测试站点', 'site settings were not persisted');
 
 refresh_captcha();
-assert_feature(captcha_ok(captcha_code()), 'captcha validation failed');
+$captcha = captcha_code();
+assert_feature((bool) preg_match('/^\d{6}$/', $captcha), 'captcha is not a six digit code');
+assert_feature(captcha_ok($captcha), 'captcha validation failed');
 assert_feature(!captcha_ok('not-a-code'), 'invalid captcha was accepted');
+
+refresh_captcha();
+ob_start();
+require $root . '/public/captcha.php';
+$captchaSvg = (string) ob_get_clean();
+$renderedCode = captcha_code();
+assert_feature(!str_contains($captchaSvg, '<text'), 'captcha exposes text nodes');
+assert_feature(!str_contains($captchaSvg, $renderedCode), 'captcha exposes its code in the response');
 
 log_access('success', 'test entry', '26010001', '陈予安');
 assert_feature(count(AdminService::accessLogs()) === 1, 'access log missing');
+
+assert_feature(rate_limit_allows('test_limit', 2, 600), 'first rate limit request rejected');
+assert_feature(rate_limit_allows('test_limit', 2, 600), 'second rate limit request rejected');
+assert_feature(!rate_limit_allows('test_limit', 2, 600), 'rate limit was bypassed');
 
 echo "ok\n";
 @unlink($db);
