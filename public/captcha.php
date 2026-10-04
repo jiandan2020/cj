@@ -34,15 +34,16 @@ if ($font === null) {
     exit('未找到验证码字体；请设置 CAPTCHA_FONT');
 }
 
-$width = 170;
+$width = captcha_image_width();
 $height = 48;
+$noiseLevel = max(1, min(4, (int) setting('captcha_noise_level', '2')));
 $image = imagecreatetruecolor($width, $height);
 imagealphablending($image, true);
 $background = imagecolorallocate($image, random_int(242, 250), random_int(246, 253), 255);
 imagefilledrectangle($image, 0, 0, $width, $height, $background);
 
 // Discuz-style interference: first draw low-contrast curves/lines behind variable glyphs.
-for ($i = 0; $i < 10; $i++) {
+for ($i = 0; $i < $noiseLevel * 5; $i++) {
     $noise = imagecolorallocatealpha($image, random_int(120, 190), random_int(160, 215), 235, random_int(55, 95));
     imagesetthickness($image, random_int(1, 2));
     imagearc(
@@ -66,7 +67,7 @@ foreach (str_split($code) as $index => $character) {
     imagettftext($image, $size, $angle, $x, $y, $color, $font, $character);
 }
 
-for ($i = 0; $i < 190; $i++) {
+for ($i = 0; $i < $noiseLevel * 95; $i++) {
     $dot = imagecolorallocatealpha($image, random_int(75, 175), random_int(105, 195), random_int(165, 235), random_int(35, 95));
     imagefilledellipse($image, random_int(0, $width), random_int(0, $height), random_int(1, 2), random_int(1, 2), $dot);
 }

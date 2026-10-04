@@ -140,6 +140,12 @@ function seed_application_data(PDO $pdo): void
         'site_title' => '成绩查询',
         'site_footer' => '独立成绩查询。请使用准考证号和姓名查询本人成绩。',
         'query_hint' => '分数相同则并列，下一名次按人数顺延。总分按已录入科目合计，排名只在当前成绩库内计算。',
+        'captcha_length' => '5',
+        'captcha_charset' => 'alnum',
+        'captcha_expiry_seconds' => '300',
+        'captcha_noise_level' => '2',
+        'public_query_limit' => '15',
+        'admin_login_limit' => '5',
     ];
     $set = $pdo->prepare('INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO NOTHING');
     foreach ($settings as $key => $value) {
@@ -289,13 +295,26 @@ function captcha_code(): string
 function refresh_captcha(): void
 {
     start_app_session();
-    $alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    $alphabet = setting('captcha_charset', 'alnum') === 'digits'
+        ? '23456789'
+        : '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    $length = captcha_length();
     $code = '';
-    for ($i = 0; $i < 5; $i++) {
+    for ($i = 0; $i < $length; $i++) {
         $code .= $alphabet[random_int(0, strlen($alphabet) - 1)];
     }
     $_SESSION['captcha_code'] = $code;
     $_SESSION['captcha_created_at'] = time();
+}
+
+function captcha_length(): int
+{
+    return max(4, min(6, (int) setting('captcha_length', '5')));
+}
+
+function captcha_image_width(): int
+{
+    return max(145, captcha_length() * 31 + 15);
 }
 
 function captcha_ok(string $answer): bool
@@ -305,7 +324,7 @@ function captcha_ok(string $answer): bool
     $createdAt = (int) ($_SESSION['captcha_created_at'] ?? 0);
     $valid = $known !== ''
         && $createdAt > 0
-        && (time() - $createdAt) <= 300
+        && (time() - $createdAt) <= max(60, min(900, (int) setting('captcha_expiry_seconds', '300')))
         && hash_equals($known, strtoupper(trim($answer)));
     refresh_captcha();
     return $valid;

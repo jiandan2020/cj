@@ -55,6 +55,23 @@ assert_feature(
 
 save_settings(['site_title' => '测试站点']);
 assert_feature(setting('site_title') === '测试站点', 'site settings were not persisted');
+save_settings([
+    'captcha_length' => '6',
+    'captcha_charset' => 'digits',
+    'captcha_expiry_seconds' => '120',
+    'captcha_noise_level' => '4',
+]);
+refresh_captcha();
+assert_feature(
+    (bool) preg_match('/^[23456789]{6}$/', captcha_code()),
+    'editable captcha settings were not applied'
+);
+save_settings([
+    'captcha_length' => '5',
+    'captcha_charset' => 'alnum',
+    'captcha_expiry_seconds' => '300',
+    'captcha_noise_level' => '2',
+]);
 
 refresh_captcha();
 $captcha = captcha_code();
