@@ -150,10 +150,10 @@ img.img-verifycode[src=""], img.img-verifycode:not([src]) { opacity: 0; }
     .met20 { margin-top: 20px; }
     .header img { max-width: 100%; }
     .footer { padding-top: 0; padding-bottom: 0; }
-    .ckhead { border-radius: 10px 10px 0 0; display: flex; justify-content: center; line-height: inherit; flex-direction: column; padding: 10px; font-size: 16px; }
+    .ckhead { box-sizing: border-box; border-radius: 10px 10px 0 0; display: flex; justify-content: center; line-height: inherit; flex-direction: column; padding: 10px; font-size: 16px; }
     .ckhead p { line-height: 24px; }
     .ckhead span { font-size: 14px; line-height: 28px; }
-    .cen-form { width: 90%; border-radius: 10px; /*margin-bottom: 115px;*/ }
+    .cen-form { width: 90%; min-height: 0; padding-bottom: 0; border-radius: 10px; box-sizing: border-box; /*margin-bottom: 115px;*/ }
     .form { width: 100%; padding-top: 20px; }
     .ckbd { /*display: flex;align-items: center;justify-content: center;*/ height: auto; padding-left: 15%; font-size: 14px; }
     .ckleft { float: initial; text-align: left; }
@@ -200,7 +200,7 @@ img.img-verifycode[src=""], img.img-verifycode:not([src]) { opacity: 0; }
     .wintips { width: 90%; height: 200px; background: #fff; position: absolute; top: 45%; left: 50%; margin-top: -100px; margin-left: -45%; z-index: 9999999; display: none; }
     .tipswz { padding: 10px 20px; font-size: 16px; color: #333; text-align: center; padding-top: 20px; }
     .gbtips { width: 100%; height: 50px; line-height: 50px; background: #f8f8f8; border-top: 1px solid #ddd; text-align: center; color: #3399fe; font-size: 16px; position: absolute; left: 0; bottom: 0; }
-    .ckfoot { padding: 0 10px; }
+    .ckfoot { position: static; box-sizing: border-box; min-height: 0; height: auto; line-height: 20px; padding: 10px; }
 
     .ksxin { margin-bottom: 10px; font-weight: normal; }
     .ksxin div { width: 50%; margin-right: 0; line-height: 28px; }
