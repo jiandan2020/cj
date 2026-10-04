@@ -4,13 +4,30 @@ declare(strict_types=1);
 
 final class Scoreboard
 {
-    public static function lookup(string $ticket, string $name): ?array
+    public static function lookup(string $ticket, string $name, array $fieldValues = []): ?array
     {
         $pdo = app_pdo();
+        $conditions = ['c.ticket_no = ?', 'c.name = ?'];
+        $params = [$ticket, $name];
+        foreach (self::queryFields(true) as $field) {
+            $value = trim((string) ($fieldValues[$field['field_key']] ?? ''));
+            if ($value === '') {
+                if ((int) $field['is_required'] === 1) {
+                    return null;
+                }
+                continue;
+            }
+            $conditions[] = 'EXISTS (
+                SELECT 1 FROM candidate_field_values cfv
+                WHERE cfv.candidate_id = c.id AND cfv.field_id = ? AND cfv.value = ?
+            )';
+            $params[] = (int) $field['id'];
+            $params[] = $value;
+        }
         $stmt = $pdo->prepare(
-            'SELECT id, ticket_no, name FROM candidates WHERE ticket_no = ? AND name = ?'
+            'SELECT c.id, c.ticket_no, c.name FROM candidates c WHERE ' . implode(' AND ', $conditions)
         );
-        $stmt->execute([$ticket, $name]);
+        $stmt->execute($params);
         $candidate = $stmt->fetch();
         if (!$candidate) {
             return null;
@@ -98,10 +115,27 @@ final class Scoreboard
         );
         $scores->execute([$id]);
         $candidate['scores'] = $scores->fetchAll();
+        $values = app_pdo()->prepare(
+            'SELECT qf.field_key, cfv.value
+             FROM candidate_field_values cfv
+             JOIN query_fields qf ON qf.id = cfv.field_id
+             WHERE cfv.candidate_id = ?'
+        );
+        $values->execute([$id]);
+        $candidate['field_values'] = [];
+        foreach ($values->fetchAll() as $value) {
+            $candidate['field_values'][(string) $value['field_key']] = (string) $value['value'];
+        }
         return $candidate;
     }
 
-    public static function save(int $id, string $ticket, string $name, array $subjects): void
+    public static function save(
+        int $id,
+        string $ticket,
+        string $name,
+        array $subjects,
+        array $fieldValues = []
+    ): void
     {
         $pdo = app_pdo();
         $pdo->beginTransaction();
@@ -127,6 +161,16 @@ final class Scoreboard
             foreach ($subjects as $item) {
                 $insert->execute([$candidateId, $item['subject'], $item['score'], $order]);
                 $order++;
+            }
+            $pdo->prepare('DELETE FROM candidate_field_values WHERE candidate_id = ?')->execute([$candidateId]);
+            $insertValue = $pdo->prepare(
+                'INSERT INTO candidate_field_values (candidate_id, field_id, value) VALUES (?, ?, ?)'
+            );
+            foreach (self::queryFields(false) as $field) {
+                $value = trim((string) ($fieldValues[$field['field_key']] ?? ''));
+                if ($value !== '') {
+                    $insertValue->execute([$candidateId, (int) $field['id'], $value]);
+                }
             }
             $pdo->commit();
         } catch (Throwable $error) {
@@ -211,6 +255,47 @@ final class Scoreboard
         return $count;
     }
 
+    public static function queryFields(bool $enabledOnly = false): array
+    {
+        $sql = 'SELECT id, field_key, label, is_required, is_enabled, sort_order
+                FROM query_fields';
+        if ($enabledOnly) {
+            $sql .= ' WHERE is_enabled = 1';
+        }
+        $sql .= ' ORDER BY sort_order, id';
+        return app_pdo()->query($sql)->fetchAll();
+    }
+
+    public static function saveQueryField(
+        int $id,
+        string $fieldKey,
+        string $label,
+        bool $required,
+        bool $enabled
+    ): void {
+        self::assertFieldKey($fieldKey);
+        self::assertFieldLabel($label);
+        $pdo = app_pdo();
+        if ($id > 0) {
+            $stmt = $pdo->prepare(
+                'UPDATE query_fields SET field_key = ?, label = ?, is_required = ?, is_enabled = ? WHERE id = ?'
+            );
+            $stmt->execute([$fieldKey, $label, (int) $required, (int) $enabled, $id]);
+        } else {
+            $order = (int) $pdo->query('SELECT COALESCE(MAX(sort_order), -1) + 1 FROM query_fields')->fetchColumn();
+            $stmt = $pdo->prepare(
+                'INSERT INTO query_fields (field_key, label, is_required, is_enabled, sort_order)
+                 VALUES (?, ?, ?, ?, ?)'
+            );
+            $stmt->execute([$fieldKey, $label, (int) $required, (int) $enabled, $order]);
+        }
+    }
+
+    public static function deleteQueryField(int $id): void
+    {
+        app_pdo()->prepare('DELETE FROM query_fields WHERE id = ?')->execute([$id]);
+    }
+
     public static function assertTicket(string $ticket): void
     {
         if (!preg_match('/^[A-Za-z0-9]{4,32}$/', $ticket)) {
@@ -244,5 +329,20 @@ final class Scoreboard
             throw new InvalidArgumentException('分数需为 0 到 999.9，最多一位小数');
         }
         return $score;
+    }
+
+    public static function assertFieldKey(string $fieldKey): void
+    {
+        if (!preg_match('/^[a-z][a-z0-9_]{1,30}$/', $fieldKey)) {
+            throw new InvalidArgumentException('字段键只能是 2 到 31 位小写字母、数字或下划线，且以字母开头');
+        }
+    }
+
+    public static function assertFieldLabel(string $label): void
+    {
+        $length = mb_strlen($label);
+        if ($length < 1 || $length > 20) {
+            throw new InvalidArgumentException('字段名称需为 1 到 20 个字符');
+        }
     }
 }

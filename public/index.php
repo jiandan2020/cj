@@ -5,25 +5,50 @@ declare(strict_types=1);
 require __DIR__ . '/../src/bootstrap.php';
 require __DIR__ . '/../src/Scoreboard.php';
 
+start_app_session();
 $error = '';
 $report = null;
+$queryFields = Scoreboard::queryFields(true);
+$siteTitle = setting('site_title', '成绩查询');
+$siteFooter = setting('site_footer', '独立成绩查询。请使用准考证号和姓名查询本人成绩。');
+$queryHint = setting('query_hint', '分数相同则并列，下一名次按人数顺延。总分按已录入科目合计，排名只在当前成绩库内计算。');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ticket = trim((string) ($_POST['ticket'] ?? ''));
     $name = trim((string) ($_POST['name'] ?? ''));
+    $customValues = is_array($_POST['field'] ?? null) ? $_POST['field'] : [];
     try {
         Scoreboard::assertTicket($ticket);
         Scoreboard::assertName($name);
-        $report = Scoreboard::lookup($ticket, $name);
+        foreach ($queryFields as $field) {
+            $value = trim((string) ($customValues[$field['field_key']] ?? ''));
+            if ((int) $field['is_required'] === 1 && $value === '') {
+                throw new InvalidArgumentException('请输入' . $field['label']);
+            }
+            if (mb_strlen($value) > 100) {
+                throw new InvalidArgumentException($field['label'] . '不能超过 100 个字符');
+            }
+        }
+        if (!captcha_ok((string) ($_POST['captcha'] ?? ''))) {
+            $error = '验证码不正确，请重新输入';
+            log_access('captcha_failed', $error, $ticket, $name);
+        } else {
+            $report = Scoreboard::lookup($ticket, $name, $customValues);
+        }
         if ($report === null) {
-            $error = '未查询到对应成绩，请核对准考证号与姓名';
+            if ($error === '') {
+                $error = '未查询到对应成绩，请核对查询信息';
+                log_access('not_found', $error, $ticket, $name);
+            }
+        } else {
+            log_access('success', '成绩查询成功', $ticket, $name);
         }
     } catch (InvalidArgumentException $exception) {
         $error = $exception->getMessage();
+        log_access('invalid_request', $error, $ticket, $name);
     }
 }
 
-$title = '成绩查询';
 $ticketValue = $report['ticket_no'] ?? trim((string) ($_POST['ticket'] ?? ''));
 $nameValue = $report['name'] ?? trim((string) ($_POST['name'] ?? ''));
 ?>
@@ -33,7 +58,7 @@ $nameValue = $report['name'] ?? trim((string) ($_POST['name'] ?? ''));
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
-    <title><?= e($title) ?></title>
+    <title><?= e($siteTitle) ?></title>
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
@@ -52,7 +77,7 @@ $nameValue = $report['name'] ?? trim((string) ($_POST['name'] ?? ''));
         <div style="height:35px;"></div>
         <div class="cen-form">
             <div class="ckhead">
-                <p><?= e($title) ?></p>
+                <p><?= e($siteTitle) ?></p>
             </div>
             <?php if ($report === null): ?>
                 <form class="form" method="post" action="">
@@ -63,6 +88,20 @@ $nameValue = $report['name'] ?? trim((string) ($_POST['name'] ?? ''));
                     <div class="ckbd">
                         <div class="ckleft">姓名：</div>
                         <div class="ckright"><input id="name" name="name" class="cipnut" type="text" maxlength="30" required value="<?= e($nameValue) ?>" placeholder="请输入姓名" autocomplete="name"></div>
+                    </div>
+                    <?php foreach ($queryFields as $field): ?>
+                        <?php $fieldValue = trim((string) ($_POST['field'][$field['field_key']] ?? '')); ?>
+                        <div class="ckbd">
+                            <div class="ckleft"><?= e($field['label']) ?>：</div>
+                            <div class="ckright"><input name="field[<?= e($field['field_key']) ?>]" class="cipnut" type="text" maxlength="100"<?= (int) $field['is_required'] === 1 ? ' required' : '' ?> value="<?= e($fieldValue) ?>" placeholder="请输入<?= e($field['label']) ?>"></div>
+                        </div>
+                    <?php endforeach; ?>
+                    <div class="ckbd">
+                        <div class="ckleft">验证码：</div>
+                        <div class="ckright">
+                            <input id="captcha" name="captcha" class="code" type="text" maxlength="3" required placeholder="请输入结果" inputmode="numeric" autocomplete="off">
+                            <img class="img-verifycode" id="captcha-image" src="captcha.php" alt="点击刷新验证码" title="点击刷新验证码">
+                        </div>
                     </div>
                     <div class="ckbd mt40">
                         <input class="inquire" type="submit" value="查询">
@@ -104,13 +143,13 @@ $nameValue = $report['name'] ?? trim((string) ($_POST['name'] ?? ''));
                     </div>
                 </div>
             <?php endif; ?>
-            <div class="ckfoot">分数相同则并列，下一名次按人数顺延。总分按已录入科目合计，排名只在当前成绩库内计算。</div>
+            <div class="ckfoot"><?= e($queryHint) ?></div>
         </div>
         <div style="height:50px;"></div>
     </div>
     <div class="footer_bottom">
         <div class="footer_bottom_box">
-            <span>独立成绩查询。请使用准考证号和姓名查询本人成绩。</span>
+            <span><?= e($siteFooter) ?></span>
         </div>
     </div>
 </div>
@@ -122,5 +161,14 @@ $nameValue = $report['name'] ?? trim((string) ($_POST['name'] ?? ''));
         });
     </script>
 <?php endif; ?>
+<script>
+    var captchaImage = document.getElementById('captcha-image');
+    if (captchaImage) {
+        captchaImage.addEventListener('click', function () {
+            this.src = 'captcha.php?t=' + Date.now();
+            document.getElementById('captcha').value = '';
+        });
+    }
+</script>
 </body>
 </html>

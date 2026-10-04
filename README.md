@@ -24,9 +24,17 @@ php -S 127.0.0.1:8080 -t public
 
 管理页：`http://127.0.0.1:8080/admin.php`
 
-初始口令是 `score-admin`。部署前请在 `config.php` 中替换 `admin_password_hash`，或设置环境变量 `SCORE_ADMIN_PASSWORD`。
+初始管理员用户名是 `admin`，初始口令是 `score-admin`。部署后请立即在后台新增管理员、修改初始口令，或在首次运行前替换 `config.php` 的 `admin_password_hash`。
 
-可以逐人新增、编辑、删除，也可以粘贴 CSV。每行格式：
+后台登录和前台查询均需要完成算术验证码。后台支持：
+
+- 修改站点标题、页脚文案和查询提示；
+- 配置自定义查询字段，例如“证件后四位”；已启用的字段会同时出现在成绩编辑页和前台查询页；
+- 新增管理员、修改管理员口令、删除管理员（超级管理员可管理所有管理员）；
+- 查看最近 100 条访问日志，包括查询成功、查询失败、验证码失败和管理操作；
+- 逐人新增、编辑、删除成绩，也可以粘贴 CSV。
+
+CSV 每行格式：
 
 ```text
 准考证号,姓名,科目,分数
@@ -36,4 +44,5 @@ php -S 127.0.0.1:8080 -t public
 
 ```bash
 php tests/rank_test.php
+php tests/admin_features_test.php
 ```

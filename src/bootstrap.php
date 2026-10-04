@@ -74,6 +74,77 @@ function migrate(PDO $pdo): void
             v TEXT NOT NULL
         )'
     );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS settings (
+            k TEXT PRIMARY KEY,
+            v TEXT NOT NULL
+        )'
+    );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS admins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            password_hash TEXT NOT NULL,
+            is_super INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\')),
+            last_login_at TEXT
+        )'
+    );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS query_fields (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            field_key TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            label TEXT NOT NULL,
+            is_required INTEGER NOT NULL DEFAULT 0,
+            is_enabled INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))
+        )'
+    );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS candidate_field_values (
+            candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+            field_id INTEGER NOT NULL REFERENCES query_fields(id) ON DELETE CASCADE,
+            value TEXT NOT NULL,
+            PRIMARY KEY(candidate_id, field_id)
+        )'
+    );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS access_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\')),
+            ip_address TEXT NOT NULL,
+            method TEXT NOT NULL,
+            path TEXT NOT NULL,
+            ticket_no TEXT,
+            candidate_name TEXT,
+            outcome TEXT NOT NULL,
+            detail TEXT
+        )'
+    );
+    seed_application_data($pdo);
+}
+
+function seed_application_data(PDO $pdo): void
+{
+    $settings = [
+        'site_title' => '成绩查询',
+        'site_footer' => '独立成绩查询。请使用准考证号和姓名查询本人成绩。',
+        'query_hint' => '分数相同则并列，下一名次按人数顺延。总分按已录入科目合计，排名只在当前成绩库内计算。',
+    ];
+    $set = $pdo->prepare('INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO NOTHING');
+    foreach ($settings as $key => $value) {
+        $set->execute([$key, $value]);
+    }
+
+    if ((int) $pdo->query('SELECT COUNT(*) FROM admins')->fetchColumn() === 0) {
+        $hash = (string) (app_config()['admin_password_hash'] ?? '');
+        if ($hash !== '') {
+            $pdo->prepare(
+                'INSERT INTO admins (username, password_hash, is_super) VALUES (?, ?, 1)'
+            )->execute(['admin', $hash]);
+        }
+    }
 }
 
 function seed_if_empty(PDO $pdo): void
@@ -177,6 +248,96 @@ function admin_password_ok(string $password): bool
     }
     $hash = app_config()['admin_password_hash'] ?? '';
     return is_string($hash) && $hash !== '' && password_verify($password, $hash);
+}
+
+function setting(string $key, string $default = ''): string
+{
+    $stmt = app_pdo()->prepare('SELECT v FROM settings WHERE k = ?');
+    $stmt->execute([$key]);
+    $value = $stmt->fetchColumn();
+    return is_string($value) ? $value : $default;
+}
+
+function save_settings(array $values): void
+{
+    $stmt = app_pdo()->prepare(
+        'INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v'
+    );
+    foreach ($values as $key => $value) {
+        $stmt->execute([$key, $value]);
+    }
+}
+
+function captcha_code(): string
+{
+    start_app_session();
+    if (empty($_SESSION['captcha_code'])) {
+        refresh_captcha();
+    }
+    return (string) $_SESSION['captcha_code'];
+}
+
+function refresh_captcha(): void
+{
+    start_app_session();
+    $left = random_int(2, 9);
+    $right = random_int(1, 9);
+    $_SESSION['captcha_code'] = (string) ($left + $right);
+    $_SESSION['captcha_label'] = $left . ' + ' . $right . ' = ?';
+}
+
+function captcha_label(): string
+{
+    captcha_code();
+    return (string) $_SESSION['captcha_label'];
+}
+
+function captcha_ok(string $answer): bool
+{
+    start_app_session();
+    $known = (string) ($_SESSION['captcha_code'] ?? '');
+    $valid = $known !== '' && hash_equals($known, trim($answer));
+    refresh_captcha();
+    return $valid;
+}
+
+function current_admin(): ?array
+{
+    start_app_session();
+    $id = $_SESSION['admin_id'] ?? 0;
+    if (!is_int($id) && !ctype_digit((string) $id)) {
+        return null;
+    }
+    $stmt = app_pdo()->prepare('SELECT id, username, is_super FROM admins WHERE id = ?');
+    $stmt->execute([(int) $id]);
+    $admin = $stmt->fetch();
+    return $admin ?: null;
+}
+
+function require_admin(): array
+{
+    $admin = current_admin();
+    if ($admin === null) {
+        redirect_to('admin.php');
+    }
+    return $admin;
+}
+
+function log_access(string $outcome, string $detail = '', string $ticket = '', string $name = ''): void
+{
+    $stmt = app_pdo()->prepare(
+        'INSERT INTO access_logs (ip_address, method, path, ticket_no, candidate_name, outcome, detail)
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    $stmt->execute([
+        client_ip(),
+        $_SERVER['REQUEST_METHOD'] ?? 'CLI',
+        parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/',
+        $ticket,
+        $name,
+        $outcome,
+        mb_substr($detail, 0, 255),
+    ]);
 }
 
 function redirect_to(string $path): never
